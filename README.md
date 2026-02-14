@@ -1,21 +1,27 @@
+<p align="center">
+  Discord bot for fast Magic: The Gathering card lookups powered by Scryfall.
+</p>
+
 # MTG Card Bot
 
-Discord bot for fast Magic: The Gathering lookups with Scryfall-powered card data, rulings, legality, and price details.
+MTG Card Bot is a Python Discord bot for card search, random pulls, and rules lookup. It is built for quick in-chat retrieval of MTG card details with API-aware throttling and operational management commands.
+
+## Trust Signals
 
 ![Python](https://img.shields.io/badge/Python-3.12%2B-blue)
-![Package Manager](https://img.shields.io/badge/Package%20Manager-uv-informational)
-![API](https://img.shields.io/badge/Data-Scryfall-green)
+![Package Manager](https://img.shields.io/badge/Package_Manager-uv-informational)
+![Data Source](https://img.shields.io/badge/Data-Scryfall-success)
 ![License](https://img.shields.io/badge/License-MIT-brightgreen)
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.12+ (`pyproject.toml` requires `>=3.12`)
+- Python 3.12+
 - [uv](https://docs.astral.sh/uv/) package manager
 - Discord bot token with Message Content intent enabled
 
-### Run Locally
+### Run
 
 ```bash
 git clone https://github.com/dunamismax/mtg-card-bot.git
@@ -26,105 +32,122 @@ uv sync
 uv run python manage_bot.py start
 ```
 
-Expected result: startup logs stream in the terminal and the bot appears online in Discord.
+Expected result:
+
+- Startup logs stream in your terminal.
+- Bot appears online in your Discord server.
 
 ## Features
 
-- Fuzzy card lookup via prefix commands or bracket syntax (`[[Card Name]]`).
-- Rules lookup for official rulings (`rules <card>`).
-- Filtered random card lookup with Scryfall query support.
-- Multi-card resolution with semicolon-separated queries in one message.
-- Per-user command cooldown and duplicate-command suppression.
-- Rich embeds with pricing, legality summaries, and card imagery.
+- Card lookup via prefix command or bracket syntax (`[[Card Name]]`).
+- Random card retrieval with optional Scryfall query filters.
+- Rules lookup via `rules <card name>`.
+- Multi-card lookup with semicolon-separated queries.
+- Duplicate command suppression and per-user cooldown handling.
+- Rich card embeds with prices, legality, and imagery.
 
 ## Tech Stack
 
 | Layer | Technology | Purpose |
 |---|---|---|
 | Runtime | Python 3.12+ | Bot runtime |
-| Discord Client | [`discord.py`](https://discordpy.readthedocs.io/) | Discord event handling and messaging |
-| Card Data API | [Scryfall API](https://scryfall.com/docs/api) | Card search, random pulls, rulings |
-| HTTP | [`httpx`](https://www.python-httpx.org/) | Async API and image requests |
-| Config/Validation | Environment-based config (`mtg_card_bot/config.py`) | Runtime behavior and secrets |
-| Tooling | `uv`, Ruff, MyPy | Dependency, lint/format, and type-check workflows |
+| Discord Client | [`discord.py`](https://discordpy.readthedocs.io/) | Discord event handling |
+| Data Source | [Scryfall API](https://scryfall.com/docs/api) | Card, rules, and random data |
+| HTTP Client | [`httpx`](https://www.python-httpx.org/) | Async API/image requests |
+| Config | `.env` + `mtg_card_bot/config.py` | Runtime config and secret loading |
+| Tooling | `uv`, Ruff, MyPy | Dependency and quality workflows |
 
 ## Project Structure
 
-```text
+```sh
 mtg-card-bot/
 ├── mtg_card_bot/
-│   ├── __main__.py              # Main runtime entrypoint
-│   ├── bot.py                   # Discord event and command handling
-│   ├── scryfall.py              # Scryfall API client and card models
-│   ├── config.py                # Environment config loading/validation
-│   ├── logging.py               # Structured logging setup
-│   └── errors.py                # Error types and wrappers
-├── manage_bot.py                # Start/stop/status/log management script
-├── pyproject.toml               # Project metadata and tooling config
-├── .env.example                 # Required/optional env vars
-├── uv.lock
+│   ├── __main__.py                 # Bot entrypoint
+│   ├── bot.py                      # Discord command/event handling
+│   ├── scryfall.py                 # Scryfall API integration
+│   ├── config.py                   # Environment config and validation
+│   ├── logging.py                  # Structured logging helpers
+│   └── errors.py                   # Error types and classification
+├── manage_bot.py                   # Start/stop/status/log process manager
+├── .env.example                    # Required and optional environment variables
+├── pyproject.toml                  # Dependencies and tooling configuration
+├── uv.lock                         # Locked dependency graph
 └── README.md
 ```
 
 ## Development Workflow and Common Commands
 
+### Setup
+
 ```bash
-# Install/update dependencies
 uv sync
+```
 
-# Start bot with manager
+### Run
+
+```bash
 uv run python manage_bot.py start
+python3 manage_bot.py status
+python3 manage_bot.py stop
+```
 
-# Bot process management
-uv run python manage_bot.py status
-uv run python manage_bot.py stop
-uv run python manage_bot.py restart
-uv run python manage_bot.py logs
+### Test
 
-# Code quality
+No automated test suite is currently committed in this repository.
+
+### Lint and Format
+
+```bash
 uv run ruff format .
 uv run ruff check .
 uv run mypy mtg_card_bot
 ```
 
+### Build
+
+No separate build step is required for local bot execution.
+
+### Deploy (Generic Service Flow)
+
+```bash
+uv run python manage_bot.py start
+```
+
+Run this command under your host service manager (`systemd`, Docker, PM2-compatible wrapper, etc.) for production uptime.
+
+Command verification notes for this README rewrite:
+
+- Verified in this environment: `python3 --version`, `python3 manage_bot.py status`.
+- Not executed in this rewrite: `uv sync` and other `uv` commands (uv not installed in this environment), bot start flow with a real Discord token, Ruff/MyPy commands.
+
 ## Deployment and Operations
 
-Configuration via `.env`:
+This repository does not include infrastructure manifests. Deploy as a long-running Python process with environment variables provided by your host.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `MTG_DISCORD_TOKEN` | none | Required Discord bot token |
-| `MTG_COMMAND_PREFIX` | `!` | Command prefix |
-| `MTG_LOG_LEVEL` | `info` | Log verbosity |
-| `MTG_JSON_LOGGING` | `false` | Structured JSON logging |
-| `MTG_COMMAND_COOLDOWN` | `2.0` | Per-user cooldown (seconds) |
-
-Operational notes:
-
-- Scryfall client enforces a `0.1s` minimum interval between requests (10 req/s max).
-- `manage_bot.py` supports graceful stop/restart and process cleanup commands.
-- For production hosting, run the start command under a process manager/service wrapper.
+- Required secret: `MTG_DISCORD_TOKEN`.
+- Primary operational command: `python3 manage_bot.py status`.
+- Use external process supervision for restart and uptime guarantees.
 
 ## Security and Reliability Notes
 
-- Never commit real bot tokens; keep secrets in `.env` or secure host environment variables.
-- Duplicate message suppression prevents repeated handling of rapid duplicate events.
-- Network calls use explicit HTTP timeouts to avoid indefinite hangs.
-- Current repo does not include automated test files; verify behavior in a controlled Discord server before production use.
+- Never commit real Discord bot tokens; keep secrets in `.env` or host-managed env vars.
+- API interactions use explicit HTTP timeouts to avoid hanging requests.
+- Scryfall requests are paced to respect API usage limits.
+- Duplicate-command suppression and cooldowns reduce accidental spam processing.
 
 ## Documentation
 
 | Path | Purpose |
 |---|---|
 | [pyproject.toml](pyproject.toml) | Dependency and tooling configuration |
-| [manage_bot.py](manage_bot.py) | Process manager commands |
-| [mtg_card_bot/bot.py](mtg_card_bot/bot.py) | Command handling and embed behavior |
-| [mtg_card_bot/scryfall.py](mtg_card_bot/scryfall.py) | Scryfall client and rate limiting |
-| [mtg_card_bot/config.py](mtg_card_bot/config.py) | Env config defaults and validation |
+| [manage_bot.py](manage_bot.py) | Runtime process management commands |
+| [mtg_card_bot/bot.py](mtg_card_bot/bot.py) | Core command and message behavior |
+| [mtg_card_bot/scryfall.py](mtg_card_bot/scryfall.py) | API integration and request pacing |
+| [mtg_card_bot/config.py](mtg_card_bot/config.py) | Environment variable parsing and defaults |
 
 ## Contributing
 
-Open an issue or pull request with reproducible command examples, expected behavior, and any API/error logs needed to validate the change.
+Open a pull request with reproducible command examples, expected behavior, and any relevant logs for review.
 
 ## License
 
