@@ -1,5 +1,5 @@
 [project]
-name = "mtg-card-bot"
+name = "oracle"
 version = "2.0.0"
 description = "A Discord bot for looking up Magic: The Gathering cards using Scryfall API"
 authors = [
@@ -28,7 +28,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-mtg-card-bot = "mtg_card_bot.__main__:main"
+oracle = "oracle.__main__:main"
 
 [tool.ruff]
 line-length = 88

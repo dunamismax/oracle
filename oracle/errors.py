@@ -1,4 +1,4 @@
-"""Simple error handling for MTG Card bot."""
+"""Simple error handling for Oracle bot."""
 
 from enum import Enum
 
@@ -16,8 +16,8 @@ class ErrorType(str, Enum):
     PERMISSION = "permission_error"
 
 
-class MTGError(Exception):
-    """MTG Card bot specific error."""
+class OracleError(Exception):
+    """Oracle bot specific error."""
 
     def __init__(self, error_type: ErrorType, message: str, cause: Exception = None):
         self.error_type = error_type
@@ -28,6 +28,6 @@ class MTGError(Exception):
 
 def create_error(
     error_type: ErrorType, message: str, cause: Exception = None
-) -> MTGError:
-    """Create an MTGError with the given type and message."""
-    return MTGError(error_type, message, cause)
+) -> OracleError:
+    """Create an OracleError with the given type and message."""
+    return OracleError(error_type, message, cause)

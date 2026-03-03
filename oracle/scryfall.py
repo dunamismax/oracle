@@ -210,7 +210,7 @@ class ScryfallClient:
     """Client for interacting with the Scryfall API."""
 
     BASE_URL = "https://api.scryfall.com"
-    USER_AGENT = "MTGCardBot/2.0"
+    USER_AGENT = "Oracle/2.0"
     RATE_LIMIT = 0.1  # 100ms between requests (10 requests per second max)
 
     def __init__(self) -> None:

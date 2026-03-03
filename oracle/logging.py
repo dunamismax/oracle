@@ -1,4 +1,4 @@
-"""Simple logging functionality for MTG Card bot."""
+"""Simple logging functionality for Oracle bot."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ _LOGGING_INITIALIZED = False
 class Logger:
     """Light wrapper around Python's logging module for component-based logs."""
 
-    def __init__(self, component: str = "mtg_card_bot"):
+    def __init__(self, component: str = "oracle"):
         self.component = component
         self.logger = logging.getLogger(component)
 

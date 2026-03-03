@@ -1,4 +1,4 @@
-# MTG Card Bot
+# Oracle
 
 Discord bot for fast Magic: The Gathering card lookups powered by the [Scryfall API](https://scryfall.com/docs/api). Supports prefix commands, bracket syntax, random pulls, rules lookup, and rich embeds with prices and legality.
 
@@ -21,8 +21,8 @@ Discord bot for fast Magic: The Gathering card lookups powered by the [Scryfall 
 ## Quick Start
 
 ```bash
-git clone https://github.com/dunamismax/mtg-card-bot.git
-cd mtg-card-bot
+git clone https://github.com/dunamismax/oracle.git
+cd oracle
 cp .env.example .env
 # set MTG_DISCORD_TOKEN in .env
 uv sync
@@ -39,7 +39,7 @@ uv run python manage_bot.py start
 | `python3 manage_bot.py stop` | Stop the bot |
 | `uv run ruff format .` | Auto-format code |
 | `uv run ruff check .` | Lint check |
-| `uv run mypy mtg_card_bot` | Type check |
+| `uv run mypy oracle` | Type check |
 
 ## Stack
 
@@ -52,7 +52,7 @@ uv run python manage_bot.py start
 ## Project Structure
 
 ```
-mtg_card_bot/
+oracle/
   __main__.py           # Bot entrypoint
   bot.py                # Discord command and event handling
   scryfall.py           # Scryfall API integration

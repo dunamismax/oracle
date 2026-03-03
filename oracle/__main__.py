@@ -1,4 +1,4 @@
-"""Main entry point for the MTG Card Bot."""
+"""Main entry point for Oracle."""
 
 import asyncio
 import signal
@@ -6,11 +6,11 @@ import sys
 from pathlib import Path
 
 from . import config, logging
-from .bot import MTGCardBot
+from .bot import OracleBot
 
 
 async def async_main() -> None:
-    """Main function to run the MTG Card Bot."""
+    """Main function to run Oracle."""
     # Load environment from .env file if it exists
     env_file = Path(".env")
     if env_file.exists():
@@ -34,10 +34,10 @@ async def async_main() -> None:
     logging.initialize_logger(cfg.log_level, cfg.json_logging)
     logger = logging.with_component("main")
 
-    logger.info("Starting MTG Card Bot", version="2.0.0")
+    logger.info("Starting Oracle", version="2.0.0")
 
     # Create and start the bot
-    bot = MTGCardBot(cfg)
+    bot = OracleBot(cfg)
 
     # Set up signal handlers for graceful shutdown
     shutdown_event = asyncio.Event()
@@ -68,7 +68,7 @@ async def async_main() -> None:
                 pass
 
         # Clean shutdown
-        logger.info("Shutting down MTG Card bot...")
+        logger.info("Shutting down Oracle...")
         await bot.close()
 
         # Check if bot task failed
@@ -76,17 +76,17 @@ async def async_main() -> None:
             try:
                 bot_task.result()
             except Exception as e:
-                logger.error("MTG Card bot failed", error=str(e))
+                logger.error("Oracle bot failed", error=str(e))
                 sys.exit(1)
 
     except Exception as e:
-        logger.error("Failed to start MTG Card bot", error=str(e))
+        logger.error("Failed to start Oracle", error=str(e))
         await bot.close()
         sys.exit(1)
 
 
 def main() -> None:
-    """Entry point for the MTG Card Bot console script."""
+    """Entry point for the Oracle console script."""
     asyncio.run(async_main())
 
 

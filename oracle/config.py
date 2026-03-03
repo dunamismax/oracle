@@ -1,4 +1,4 @@
-"""Configuration management for the MTG Card Discord bot."""
+"""Configuration management for the Oracle Discord bot."""
 
 import os
 from pathlib import Path
@@ -61,12 +61,12 @@ def load_env_file(env_file: Path) -> None:
                     os.environ[key] = value
 
 
-class MTGConfig:
-    """Configuration for MTG Card bot."""
+class OracleConfig:
+    """Configuration for Oracle bot."""
 
     def __init__(self):
         self.discord_token = os.getenv("MTG_DISCORD_TOKEN", "")
-        self.bot_name = "MTG Card Bot"
+        self.bot_name = "Oracle"
         self.command_prefix = os.getenv("MTG_COMMAND_PREFIX", "!")
         self.log_level = os.getenv(
             "MTG_LOG_LEVEL", os.getenv("LOG_LEVEL", "info")
@@ -92,6 +92,6 @@ class MTGConfig:
             )
 
 
-def load_config() -> MTGConfig:
-    """Load configuration for MTG Card bot."""
-    return MTGConfig()
+def load_config() -> OracleConfig:
+    """Load configuration for Oracle bot."""
+    return OracleConfig()

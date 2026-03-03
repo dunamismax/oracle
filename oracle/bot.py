@@ -1,4 +1,4 @@
-"""Main MTG Card Bot Discord bot implementation."""
+"""Main Oracle Discord bot implementation."""
 
 import asyncio
 import io
@@ -29,17 +29,17 @@ class MultiResolvedCard:
         self.error = error
 
 
-class MTGCardBot(discord.Client):
+class OracleBot(discord.Client):
     """Discord bot for Magic: The Gathering card lookups."""
 
-    def __init__(self, cfg: config.MTGConfig) -> None:
-        """Initialize the MTG Card Bot."""
+    def __init__(self, cfg: config.OracleConfig) -> None:
+        """Initialize Oracle bot."""
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
         self.config = cfg
 
-        self.logger = logging.with_component("mtg_card_bot")
+        self.logger = logging.with_component("oracle")
         self.scryfall_client = ScryfallClient()
         self.http_client = httpx.AsyncClient(timeout=20.0)
 
@@ -67,7 +67,7 @@ class MTGCardBot(discord.Client):
         self._cleanup_task = asyncio.create_task(
             self._cleanup_duplicates_periodically()
         )
-        self.logger.info("MTG Card bot setup completed")
+        self.logger.info("Oracle bot setup completed")
 
     async def on_ready(self) -> None:
         """Called when the bot is ready."""
@@ -194,7 +194,7 @@ class MTGCardBot(discord.Client):
             )
 
             # Provide helpful error messages
-            if isinstance(e, errors.MTGError):
+            if isinstance(e, errors.OracleError):
                 if e.error_type == errors.ErrorType.NOT_FOUND and filter_query:
                     error_msg = f"No cards found matching filters: '{filter_query}'. Try broader criteria."
                 elif e.error_type == errors.ErrorType.RATE_LIMIT:
@@ -239,7 +239,7 @@ class MTGCardBot(discord.Client):
             )
 
             # Provide helpful error messages based on error type
-            if isinstance(e, errors.MTGError):
+            if isinstance(e, errors.OracleError):
                 if e.error_type == errors.ErrorType.NOT_FOUND:
                     if self._has_filter_parameters(card_query):
                         error_msg = f"No cards found for '{card_query}'. Try simpler filters like `e:set` or `is:foil`, or check the spelling."
@@ -331,7 +331,7 @@ class MTGCardBot(discord.Client):
                 error=str(e),
             )
 
-            if isinstance(e, errors.MTGError):
+            if isinstance(e, errors.OracleError):
                 if e.error_type == errors.ErrorType.NOT_FOUND:
                     error_msg = f"Card '{card_query}' not found for rules lookup."
                 else:
@@ -719,7 +719,7 @@ class MTGCardBot(discord.Client):
 
         prefix = self.config.command_prefix
         embed = discord.Embed(
-            title="MTG Card Bot",
+            title="Oracle",
             description="**Fast Discord lookups with live pricing, legality, and rich embeds**",
             color=0x5865F2,
         )
@@ -769,7 +769,7 @@ class MTGCardBot(discord.Client):
         )
 
         embed.set_footer(
-            text="Powered by Scryfall API • github.com/dunamismax/mtg-card-bot"
+            text="Powered by Scryfall API • github.com/dunamismax/oracle"
         )
 
         await message.channel.send(embed=embed)
@@ -847,7 +847,7 @@ class MTGCardBot(discord.Client):
 
     async def close(self) -> None:
         """Clean shutdown of the bot."""
-        self.logger.info("Shutting down MTG Card bot")
+        self.logger.info("Shutting down Oracle bot")
 
         # Cancel cleanup task
         if self._cleanup_task and not self._cleanup_task.done():
