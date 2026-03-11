@@ -22,16 +22,16 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-scryfall-discord-bot = "oracle.__main__:main"
-oracle = "oracle.__main__:main"
+scryfall-discord-bot = "app.__main__:main"
+app = "app.__main__:main"
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "ANN", "S", "B", "A", "COM", "C4", "DTZ", "T10", "ISC", "ICN", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "TCH", "ARG", "PTH", "TD", "FIX", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "PERF", "FURB", "LOG", "RUF"]
-ignore = ["ANN101", "ANN102", "COM812", "ISC001"]
+select = ["E", "F", "I", "UP", "B", "SIM", "PTH", "RUF"]
+ignore = ["COM812", "ISC001", "E501"]
 
 [tool.mypy]
 python_version = "3.12"

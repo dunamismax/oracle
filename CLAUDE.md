@@ -6,8 +6,6 @@
 
 This repo is `scryfall-discord-bot`.
 
-The Python package name is still `oracle`. Treat that as legacy module naming, not current branding.
-
 ## Repo Rules
 
 - Keep the bot runnable without adding process-management ceremony.

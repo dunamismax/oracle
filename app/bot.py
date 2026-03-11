@@ -3,7 +3,9 @@
 import asyncio
 import io
 import re
+import shlex
 import time
+from contextlib import suppress
 from urllib.parse import urlparse
 
 import discord
@@ -29,10 +31,17 @@ class MultiResolvedCard:
         self.error = error
 
 
-class OracleBot(discord.Client):
+class ScryfallBot(discord.Client):
     """Discord bot for Magic: The Gathering card lookups."""
 
-    def __init__(self, cfg: config.OracleConfig) -> None:
+    SCRYFALL_CLAUSE_PATTERN = re.compile(
+        r"^(?:-)?[a-z][a-z0-9_-]*(?::|<=|>=|=|<|>).+$",
+        re.IGNORECASE,
+    )
+    BRACKET_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
+    MIN_FALLBACK_CARD_NAME_LENGTH = 2
+
+    def __init__(self, cfg: config.BotConfig) -> None:
         """Initialize the bot."""
         intents = discord.Intents.default()
         intents.message_content = True
@@ -49,17 +58,10 @@ class OracleBot(discord.Client):
         # Track processed Discord message IDs
         self._processed_message_ids: set[int] = set()
         # Background cleanup task
-        self._cleanup_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task[None] | None = None
 
         # Performance improvements
         self._user_rate_limits: dict[int, float] = {}  # Track per-user rate limits
-
-    async def start(self) -> None:
-        # Prefer static token from config; support multiple field names
-        token = getattr(self.config, "token", None) or getattr(
-            self.config, "discord_token", ""
-        )
-        await super().start(token)
 
     async def setup_hook(self) -> None:
         """Called when the bot is starting up."""
@@ -194,7 +196,7 @@ class OracleBot(discord.Client):
             )
 
             # Provide helpful error messages
-            if isinstance(e, errors.OracleError):
+            if isinstance(e, errors.BotError):
                 if e.error_type == errors.ErrorType.NOT_FOUND and filter_query:
                     error_msg = f"No cards found matching filters: '{filter_query}'. Try broader criteria."
                 elif e.error_type == errors.ErrorType.RATE_LIMIT:
@@ -239,12 +241,19 @@ class OracleBot(discord.Client):
             )
 
             # Provide helpful error messages based on error type
-            if isinstance(e, errors.OracleError):
+            if isinstance(e, errors.BotError):
                 if e.error_type == errors.ErrorType.NOT_FOUND:
-                    if self._has_filter_parameters(card_query):
-                        error_msg = f"No cards found for '{card_query}'. Try simpler filters like `e:set` or `is:foil`, or check the spelling."
+                    if self._has_scryfall_clauses(card_query):
+                        error_msg = (
+                            f"No cards found for '{card_query}'. Try simpler "
+                            "filters like `e:set` or `is:foil`, or check the "
+                            "spelling."
+                        )
                     else:
-                        error_msg = f"Card '{card_query}' not found. Try partial names like 'bolt' for 'Lightning Bolt'."
+                        error_msg = (
+                            f"Card '{card_query}' not found. Try partial names "
+                            "like 'bolt' for 'Lightning Bolt'."
+                        )
                 elif e.error_type == errors.ErrorType.RATE_LIMIT:
                     error_msg = "API rate limit exceeded. Please try again in a moment."
                 else:
@@ -303,7 +312,7 @@ class OracleBot(discord.Client):
             # Add rulings as fields (Discord has a limit of 25 fields)
             ruling_count = min(len(rulings), 10)  # Limit to 10 rulings for readability
 
-            for i, ruling in enumerate(rulings[:ruling_count]):
+            for ruling in rulings[:ruling_count]:
                 source = "Wizards" if ruling.get("source") == "wotc" else "Scryfall"
                 date = ruling.get("published_at", "Unknown date")
                 comment = ruling.get("comment", "No ruling text")
@@ -331,7 +340,7 @@ class OracleBot(discord.Client):
                 error=str(e),
             )
 
-            if isinstance(e, errors.OracleError):
+            if isinstance(e, errors.BotError):
                 if e.error_type == errors.ErrorType.NOT_FOUND:
                     error_msg = f"Card '{card_query}' not found for rules lookup."
                 else:
@@ -350,7 +359,11 @@ class OracleBot(discord.Client):
             card_query
         )
         search_query = clean_query or card_query
-        has_filters = bool(order_hint) or self._has_filter_parameters(search_query)
+        has_filters = (
+            bool(order_hint)
+            or bool(direction_hint)
+            or self._has_scryfall_clauses(search_query)
+        )
         used_fallback = False
 
         if has_filters:
@@ -359,10 +372,13 @@ class OracleBot(discord.Client):
                 card = await self.scryfall_client.search_card_first(
                     search_query, order_hint, direction_hint
                 )
-            except Exception:
+            except errors.BotError as exc:
+                if exc.error_type != errors.ErrorType.NOT_FOUND:
+                    raise
+
                 # If filtered search fails, extract card name and try fallback
                 card_name = self._extract_card_name(search_query)
-                if card_name and len(card_name) >= 2:
+                if card_name and len(card_name) >= self.MIN_FALLBACK_CARD_NAME_LENGTH:
                     card = await self.scryfall_client.get_card_by_name(card_name)
                     used_fallback = True
                 else:
@@ -517,29 +533,36 @@ class OracleBot(discord.Client):
             return "card"
         return safe[:64]  # Limit length
 
+    def _has_scryfall_clauses(self, query: str) -> bool:
+        """Check whether the query includes Scryfall search clause syntax."""
+        return any(
+            self._is_scryfall_clause_token(token)
+            for token in self._tokenize_query(query)
+        )
+
     def _has_filter_parameters(self, query: str) -> bool:
-        """Check if the query contains Scryfall filter syntax."""
-        essential_filters = [
-            "e:",
-            "set:",
-            "frame:",
-            "border:",
-            "is:foil",
-            "is:nonfoil",
-            "is:fullart",
-            "is:textless",
-            "is:borderless",
-            "rarity:",
-            "cn:",
-            "number:",
-        ]
+        """Backward-compatible wrapper for Scryfall clause detection."""
+        return self._has_scryfall_clauses(query)
 
-        lower_query = query.lower()
-        return any(filter_param in lower_query for filter_param in essential_filters)
+    def _tokenize_query(self, query: str) -> list[str]:
+        """Split a query while preserving quoted search clauses when possible."""
+        try:
+            return shlex.split(query)
+        except ValueError:
+            return query.split()
 
-    def _extract_sort_parameters(self, query: str) -> tuple[str, str | None, str | None]:
+    def _is_scryfall_clause_token(self, token: str) -> bool:
+        """Return whether a token looks like a Scryfall search clause."""
+        normalized = token.strip().strip("()[]{}.,;'\"")
+        if not normalized or "://" in normalized:
+            return False
+        return bool(self.SCRYFALL_CLAUSE_PATTERN.match(normalized))
+
+    def _extract_sort_parameters(
+        self, query: str
+    ) -> tuple[str, str | None, str | None]:
         """Extract order/dir hints from the query and return the cleaned query."""
-        tokens = query.split()
+        tokens = self._tokenize_query(query)
         order: str | None = None
         direction: str | None = None
         remaining_tokens: list[str] = []
@@ -564,14 +587,13 @@ class OracleBot(discord.Client):
 
     def _extract_card_name(self, query: str) -> str:
         """Extract the card name from a filtered query for fallback purposes."""
-        words = query.split()
+        words = self._tokenize_query(query)
         card_name_parts = []
 
         for word in words:
             lower_word = word.lower()
 
-            # Skip known filter patterns with colons
-            if ":" in lower_word:
+            if self._is_scryfall_clause_token(word):
                 continue
 
             # Skip standalone filter keywords
@@ -589,11 +611,7 @@ class OracleBot(discord.Client):
 
     def _extract_bracket_content(self, message_content: str) -> str | None:
         """Extract card name from bracket syntax [[card name]]."""
-        import re
-
-        # Look for [[content]] pattern
-        bracket_pattern = r"\[\[([^\]]+)\]\]"
-        match = re.search(bracket_pattern, message_content)
+        match = self.BRACKET_PATTERN.search(message_content)
 
         if match:
             return match.group(1).strip()
@@ -618,7 +636,7 @@ class OracleBot(discord.Client):
             # Send text-only message if no image is available
             embed = discord.Embed(
                 title=card.get_display_name(),
-                description=f"**{card.type_line}**\n{card.oracle_text}",
+                description=f"**{card.type_line}**\n{card.rules_text}",
                 color=0x9B59B6,
                 url=card.scryfall_uri,
             )
@@ -669,7 +687,7 @@ class OracleBot(discord.Client):
         elif (
             original_query
             and original_query != "random"
-            and self._has_filter_parameters(original_query)
+            and self._has_scryfall_clauses(original_query)
         ):
             descriptions.append(f"*Filtered result for: `{original_query}`*")
 
@@ -850,10 +868,8 @@ class OracleBot(discord.Client):
         # Cancel cleanup task
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
 
         # Close HTTP clients
         try:

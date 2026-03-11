@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from oracle.config import load_config, load_env_file
+from app.config import load_config, load_env_file
 
 
 class ConfigTests(unittest.TestCase):

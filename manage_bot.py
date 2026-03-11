@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from oracle import config
+from app import config
 
 APP_NAME = "scryfall-discord-bot"
 REMOVED_COMMANDS = {"stop", "restart", "logs", "kill"}
@@ -22,7 +22,7 @@ def load_local_env() -> None:
         config.load_env_file(env_file)
 
 
-def validate_runtime() -> config.OracleConfig:
+def validate_runtime() -> config.BotConfig:
     """Load and validate runtime configuration."""
     cfg = config.load_config()
     cfg.validate_config()
@@ -32,8 +32,8 @@ def validate_runtime() -> config.OracleConfig:
 def build_runtime_command() -> list[str]:
     """Return the simplest available command for launching the bot."""
     if shutil.which("uv"):
-        return ["uv", "run", "python", "-m", "oracle"]
-    return [sys.executable, "-m", "oracle"]
+        return ["uv", "run", "python", "-m", "app"]
+    return [sys.executable, "-m", "app"]
 
 
 def run_bot() -> int:

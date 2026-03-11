@@ -28,9 +28,9 @@ def load_env_file(env_file: Path) -> None:
     if not env_file.exists():
         return
 
-    with open(env_file, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
+    with env_file.open(encoding="utf-8") as env_handle:
+        for raw_line in env_handle:
+            line = raw_line.strip()
             if line == "" or line.startswith("#"):
                 continue
 
@@ -50,7 +50,7 @@ def load_env_file(env_file: Path) -> None:
                     os.environ[key] = value
 
 
-class OracleConfig:
+class BotConfig:
     """Runtime configuration for the bot."""
 
     def __init__(self) -> None:
@@ -76,6 +76,6 @@ class OracleConfig:
             )
 
 
-def load_config() -> OracleConfig:
+def load_config() -> BotConfig:
     """Load runtime configuration."""
-    return OracleConfig()
+    return BotConfig()

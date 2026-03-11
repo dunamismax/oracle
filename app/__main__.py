@@ -3,10 +3,12 @@
 import asyncio
 import signal
 import sys
+from contextlib import suppress
 from pathlib import Path
+from types import FrameType
 
 from . import config, logging
-from .bot import OracleBot
+from .bot import ScryfallBot
 
 
 async def async_main() -> None:
@@ -37,12 +39,12 @@ async def async_main() -> None:
     logger.info("Starting bot", app="scryfall-discord-bot", version="2.0.0")
 
     # Create and start the bot
-    bot = OracleBot(cfg)
+    bot = ScryfallBot(cfg)
 
     # Set up signal handlers for graceful shutdown
     shutdown_event = asyncio.Event()
 
-    def signal_handler(signum: int, frame) -> None:
+    def signal_handler(signum: int, _frame: FrameType | None) -> None:
         logger.info("Received shutdown signal", signal=signum)
         shutdown_event.set()
 
@@ -51,21 +53,20 @@ async def async_main() -> None:
 
     try:
         # Start bot in background
-        bot_task = asyncio.create_task(bot.start())
+        bot_task = asyncio.create_task(bot.start(cfg.discord_token))
+        shutdown_task = asyncio.create_task(shutdown_event.wait())
 
         # Wait for shutdown signal or bot failure
         done, pending = await asyncio.wait(
-            [bot_task, asyncio.create_task(shutdown_event.wait())],
+            [bot_task, shutdown_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
         # Cancel pending tasks
         for task in pending:
             task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         # Clean shutdown
         logger.info("Shutting down bot")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from oracle.scryfall import Card
+from app.scryfall import Card
 
 
 class CardTests(unittest.TestCase):

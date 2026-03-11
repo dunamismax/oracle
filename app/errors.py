@@ -16,7 +16,7 @@ class ErrorType(str, Enum):
     PERMISSION = "permission_error"
 
 
-class OracleError(Exception):
+class BotError(Exception):
     """Bot-specific error."""
 
     def __init__(
@@ -30,6 +30,6 @@ class OracleError(Exception):
 
 def create_error(
     error_type: ErrorType, message: str, cause: Exception | None = None
-) -> OracleError:
-    """Create an OracleError with the given type and message."""
-    return OracleError(error_type, message, cause)
+) -> BotError:
+    """Create a BotError with the given type and message."""
+    return BotError(error_type, message, cause)

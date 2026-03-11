@@ -27,7 +27,7 @@ Setup:
 cp .env.example .env
 # set MTG_DISCORD_TOKEN in .env
 uv sync
-uv run python -m oracle
+uv run python -m app
 ```
 
 Optional wrapper:
@@ -42,7 +42,7 @@ uv run python manage_bot.py run
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m compileall manage_bot.py oracle tests
+python3 -m compileall manage_bot.py app tests
 ```
 
 Static checks are configured in `pyproject.toml`, but they are optional local tooling, not part of the runtime path.
@@ -50,7 +50,7 @@ Static checks are configured in `pyproject.toml`, but they are optional local to
 ## Layout
 
 ```text
-oracle/                # legacy module path kept to avoid risky import churn
+app/                   # application package
   __main__.py          # bot entrypoint
   bot.py               # Discord command and event handling
   scryfall.py          # Scryfall API integration
@@ -58,10 +58,6 @@ oracle/                # legacy module path kept to avoid risky import churn
 manage_bot.py          # thin foreground launcher
 tests/                 # stdlib unit tests for stable utility code
 ```
-
-## Naming
-
-The repo identity is `scryfall-discord-bot`. The Python package/module name is still `oracle` for now. That residue is intentional to avoid a risky rename that would buy very little.
 
 ## License
 

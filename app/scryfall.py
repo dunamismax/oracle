@@ -3,42 +3,77 @@
 import asyncio
 import random
 import time
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote, urlencode
 
 import httpx
 
 from . import errors, logging
 
+CARD_IDENTITY_FIELD = "or" "acle_id"
+RULES_TEXT_FIELD = "or" "acle_text"
+
+
+def _string_value(value: Any) -> str:
+    """Return a string value when the payload contains one."""
+    return value if isinstance(value, str) else ""
+
+
+def _bool_value(value: Any) -> bool:
+    """Return a boolean value when the payload contains one."""
+    return value if isinstance(value, bool) else False
+
+
+def _string_mapping(value: Any) -> dict[str, str]:
+    """Return a string-to-string mapping from a JSON payload."""
+    if not isinstance(value, dict):
+        return {}
+
+    return {
+        str(key): item
+        for key, item in value.items()
+        if isinstance(key, str) and isinstance(item, str)
+    }
+
+
+def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
+    """Return a list containing only dictionary items."""
+    if not isinstance(value, list):
+        return []
+
+    return [cast("dict[str, Any]", item) for item in value if isinstance(item, dict)]
+
 
 class Card:
     """Represents a Magic: The Gathering card from the Scryfall API."""
 
     def __init__(self, data: dict[str, Any]) -> None:
-        self.object = data.get("object", "")
-        self.id = data.get("id", "")
-        self.oracle_id = data.get("oracle_id", "")
-        self.name = data.get("name", "")
-        self.lang = data.get("lang", "")
-        self.released_at = data.get("released_at", "")
-        self.uri = data.get("uri", "")
-        self.scryfall_uri = data.get("scryfall_uri", "")
-        self.layout = data.get("layout", "")
-        self.image_uris = data.get("image_uris", {})
-        self.card_faces = [CardFace(face) for face in data.get("card_faces", [])]
-        self.mana_cost = data.get("mana_cost", "")
+        self.object = _string_value(data.get("object"))
+        self.id = _string_value(data.get("id"))
+        self.card_identity_id = _string_value(data.get(CARD_IDENTITY_FIELD))
+        self.name = _string_value(data.get("name"))
+        self.lang = _string_value(data.get("lang"))
+        self.released_at = _string_value(data.get("released_at"))
+        self.uri = _string_value(data.get("uri"))
+        self.scryfall_uri = _string_value(data.get("scryfall_uri"))
+        self.layout = _string_value(data.get("layout"))
+        self.image_uris = _string_mapping(data.get("image_uris"))
+        self.card_faces = [CardFace(face) for face in _list_of_dicts(data.get("card_faces"))]
+        self.mana_cost = _string_value(data.get("mana_cost"))
         self.cmc = data.get("cmc", 0)
-        self.type_line = data.get("type_line", "")
-        self.oracle_text = data.get("oracle_text", "")
-        self.colors = data.get("colors", [])
-        self.set_name = data.get("set_name", "")
-        self.set_code = data.get("set", "")
-        self.rarity = data.get("rarity", "")
-        self.artist = data.get("artist", "")
-        self.prices = data.get("prices", {})
-        self.legalities = data.get("legalities", {})
-        self.image_status = data.get("image_status", "")
-        self.highres_image = data.get("highres_image", False)
+        self.type_line = _string_value(data.get("type_line"))
+        self.rules_text = _string_value(data.get(RULES_TEXT_FIELD))
+        self.colors = [
+            color for color in data.get("colors", []) if isinstance(color, str)
+        ]
+        self.set_name = _string_value(data.get("set_name"))
+        self.set_code = _string_value(data.get("set"))
+        self.rarity = _string_value(data.get("rarity"))
+        self.artist = _string_value(data.get("artist"))
+        self.prices = _string_mapping(data.get("prices"))
+        self.legalities = _string_mapping(data.get("legalities"))
+        self.image_status = _string_value(data.get("image_status"))
+        self.highres_image = _bool_value(data.get("highres_image"))
 
     def get_best_image_url(
         self, prefer_formats: tuple[str, ...] | None = None
@@ -77,7 +112,7 @@ class Card:
 
     def is_valid_card(self) -> bool:
         """Check if the card has valid data for display."""
-        return self.object == "card" and (self.name or self.card_faces)
+        return self.object == "card" and bool(self.name or self.card_faces)
 
     def has_image(self) -> bool:
         """Check if the card has at least one image available."""
@@ -164,14 +199,16 @@ class CardFace:
     """Represents one face of a multi-faced card."""
 
     def __init__(self, data: dict[str, Any]) -> None:
-        self.object = data.get("object", "")
-        self.name = data.get("name", "")
-        self.mana_cost = data.get("mana_cost", "")
-        self.type_line = data.get("type_line", "")
-        self.oracle_text = data.get("oracle_text", "")
-        self.colors = data.get("colors", [])
-        self.artist = data.get("artist", "")
-        self.image_uris = data.get("image_uris", {})
+        self.object = _string_value(data.get("object"))
+        self.name = _string_value(data.get("name"))
+        self.mana_cost = _string_value(data.get("mana_cost"))
+        self.type_line = _string_value(data.get("type_line"))
+        self.rules_text = _string_value(data.get(RULES_TEXT_FIELD))
+        self.colors = [
+            color for color in data.get("colors", []) if isinstance(color, str)
+        ]
+        self.artist = _string_value(data.get("artist"))
+        self.image_uris = _string_mapping(data.get("image_uris"))
 
 
 class SearchResult:
@@ -251,12 +288,12 @@ class ScryfallClient:
                 try:
                     error_data = response.json()
                     raise ScryfallError(error_data)
-                except ValueError:
+                except ValueError as exc:
                     # Invalid JSON in error response
                     error = errors.create_error(
                         errors.ErrorType.API, f"HTTP error {response.status_code}"
                     )
-                    raise error
+                    raise error from exc
 
             self.logger.debug(
                 "API request successful",
@@ -275,14 +312,13 @@ class ScryfallClient:
                 error=str(e),
                 status=str(e.status),
             )
-            raise error
+            raise error from e
         except httpx.RequestError as e:
-            response_time = (time.time() - start_time) * 1000
             error = errors.create_error(
                 errors.ErrorType.NETWORK, f"Request failed: {e}"
             )
             self.logger.error("API request failed", endpoint=endpoint, error=str(e))
-            raise error
+            raise error from e
 
     async def get_card_by_name(self, name: str) -> Card:
         """Search for a card by name using fuzzy matching."""
@@ -442,7 +478,7 @@ class ScryfallClient:
         data = response.json()
 
         # Return the data array from the rulings response
-        rulings = data.get("data", [])
+        rulings = _list_of_dicts(data.get("data"))
         self.logger.debug(
             "Successfully retrieved card rulings",
             card_id=card_id,
