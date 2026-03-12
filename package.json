@@ -1,0 +1,31 @@
+{
+  "name": "scryfall-discord-bot",
+  "version": "2.0.0",
+  "description": "Discord bot for Magic: The Gathering card lookups via the Scryfall API",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.10",
+  "engines": {
+    "bun": ">=1.3.10"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "manage": "bun run manage-bot.ts",
+    "check:runtime": "bun run manage-bot.ts check",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "discord.js": "^14.21.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  }
+}
