@@ -59,6 +59,7 @@ def initialize_logger(level: str = "info", json_format: bool = False) -> None:
         return
 
     if json_format:
+
         class JsonFormatter(logging.Formatter):
             """Formatter that outputs log records as JSON strings."""
 

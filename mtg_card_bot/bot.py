@@ -4,6 +4,7 @@ import asyncio
 import io
 import re
 import time
+from contextlib import suppress
 from urllib.parse import urlparse
 
 import discord
@@ -49,17 +50,19 @@ class MTGCardBot(discord.Client):
         # Track processed Discord message IDs
         self._processed_message_ids: set[int] = set()
         # Background cleanup task
-        self._cleanup_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task[None] | None = None
 
         # Performance improvements
         self._user_rate_limits: dict[int, float] = {}  # Track per-user rate limits
 
-    async def start(self) -> None:
-        # Prefer static token from config; support multiple field names
-        token = getattr(self.config, "token", None) or getattr(
-            self.config, "discord_token", ""
+    async def start(self, token: str | None = None, *, reconnect: bool = True) -> None:
+        """Start the Discord client with the configured token by default."""
+        resolved_token = (
+            token
+            or getattr(self.config, "token", None)
+            or getattr(self.config, "discord_token", "")
         )
-        await super().start(token)
+        await super().start(resolved_token, reconnect=reconnect)
 
     async def setup_hook(self) -> None:
         """Called when the bot is starting up."""
@@ -196,7 +199,10 @@ class MTGCardBot(discord.Client):
             # Provide helpful error messages
             if isinstance(e, errors.MTGError):
                 if e.error_type == errors.ErrorType.NOT_FOUND and filter_query:
-                    error_msg = f"No cards found matching filters: '{filter_query}'. Try broader criteria."
+                    error_msg = (
+                        f"No cards found matching filters: '{filter_query}'. "
+                        "Try broader criteria."
+                    )
                 elif e.error_type == errors.ErrorType.RATE_LIMIT:
                     error_msg = "API rate limit exceeded. Please try again in a moment."
                 else:
@@ -242,9 +248,16 @@ class MTGCardBot(discord.Client):
             if isinstance(e, errors.MTGError):
                 if e.error_type == errors.ErrorType.NOT_FOUND:
                     if self._has_filter_parameters(card_query):
-                        error_msg = f"No cards found for '{card_query}'. Try simpler filters like `e:set` or `is:foil`, or check the spelling."
+                        error_msg = (
+                            f"No cards found for '{card_query}'. Try simpler "
+                            "filters like `e:set` or `is:foil`, or check the "
+                            "spelling."
+                        )
                     else:
-                        error_msg = f"Card '{card_query}' not found. Try partial names like 'bolt' for 'Lightning Bolt'."
+                        error_msg = (
+                            f"Card '{card_query}' not found. Try partial names "
+                            "like 'bolt' for 'Lightning Bolt'."
+                        )
                 elif e.error_type == errors.ErrorType.RATE_LIMIT:
                     error_msg = "API rate limit exceeded. Please try again in a moment."
                 else:
@@ -283,7 +296,9 @@ class MTGCardBot(discord.Client):
             if not rulings:
                 embed = discord.Embed(
                     title="No Rulings Found",
-                    description=f"No official rulings found for **{card.get_display_name()}**.",
+                    description=(
+                        f"No official rulings found for **{card.get_display_name()}**."
+                    ),
                     color=0x9B59B6,
                     url=card.scryfall_uri,
                 )
@@ -303,7 +318,7 @@ class MTGCardBot(discord.Client):
             # Add rulings as fields (Discord has a limit of 25 fields)
             ruling_count = min(len(rulings), 10)  # Limit to 10 rulings for readability
 
-            for i, ruling in enumerate(rulings[:ruling_count]):
+            for ruling in rulings[:ruling_count]:
                 source = "Wizards" if ruling.get("source") == "wotc" else "Scryfall"
                 date = ruling.get("published_at", "Unknown date")
                 comment = ruling.get("comment", "No ruling text")
@@ -316,7 +331,10 @@ class MTGCardBot(discord.Client):
 
             if len(rulings) > ruling_count:
                 embed.set_footer(
-                    text=f"Showing {ruling_count} of {len(rulings)} rulings. Visit Scryfall for complete rulings."
+                    text=(
+                        f"Showing {ruling_count} of {len(rulings)} rulings. "
+                        "Visit Scryfall for complete rulings."
+                    )
                 )
             else:
                 embed.set_footer(text=f"{len(rulings)} ruling(s) found.")
@@ -335,7 +353,10 @@ class MTGCardBot(discord.Client):
                 if e.error_type == errors.ErrorType.NOT_FOUND:
                     error_msg = f"Card '{card_query}' not found for rules lookup."
                 else:
-                    error_msg = "Sorry, something went wrong while looking up rules for that card."
+                    error_msg = (
+                        "Sorry, something went wrong while looking up rules for "
+                        "that card."
+                    )
             else:
                 error_msg = (
                     "Sorry, something went wrong while looking up rules for that card."
@@ -457,9 +478,7 @@ class MTGCardBot(discord.Client):
 
             # Fetch image if available
             if item.card.has_image():
-                image_url = item.card.get_best_image_url(
-                    ("large", "normal", "small")
-                )
+                image_url = item.card.get_best_image_url(("large", "normal", "small"))
                 try:
                     image_data, filename = await self._fetch_image(image_url, name)
                     files.append(
@@ -537,7 +556,9 @@ class MTGCardBot(discord.Client):
         lower_query = query.lower()
         return any(filter_param in lower_query for filter_param in essential_filters)
 
-    def _extract_sort_parameters(self, query: str) -> tuple[str, str | None, str | None]:
+    def _extract_sort_parameters(
+        self, query: str
+    ) -> tuple[str, str | None, str | None]:
         """Extract order/dir hints from the query and return the cleaned query."""
         tokens = query.split()
         order: str | None = None
@@ -664,7 +685,8 @@ class MTGCardBot(discord.Client):
 
         if used_fallback:
             descriptions.append(
-                f"*No exact match found for filters in `{original_query}`, showing closest match*"
+                "*No exact match found for filters in "
+                f"`{original_query}`, showing closest match*"
             )
         elif (
             original_query
@@ -720,7 +742,9 @@ class MTGCardBot(discord.Client):
         prefix = self.config.command_prefix
         embed = discord.Embed(
             title="MTG Card Bot",
-            description="**Fast Discord lookups with live pricing, legality, and rich embeds**",
+            description=(
+                "**Fast Discord lookups with live pricing, legality, and rich embeds**"
+            ),
             color=0x5865F2,
         )
 
@@ -852,10 +876,8 @@ class MTGCardBot(discord.Client):
         # Cancel cleanup task
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
 
         # Close HTTP clients
         try:

@@ -36,10 +36,14 @@ venv.bak/
 # VS Code
 .vscode/
 
-# mypy
+# type checking
 .mypy_cache/
 .dmypy.json
 dmypy.json
+.pyright/
+
+# ruff
+.ruff_cache/
 
 # pytest
 .pytest_cache/

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import FrameType
 
 
 class MTGBotManager:
@@ -69,11 +70,13 @@ class MTGBotManager:
                 ):
                     parts = line.split(None, 10)
                     if len(parts) >= 11:
-                        processes.append({
-                            "pid": parts[1],
-                            "user": parts[0],
-                            "command": parts[10],
-                        })
+                        processes.append(
+                            {
+                                "pid": parts[1],
+                                "user": parts[0],
+                                "command": parts[10],
+                            }
+                        )
             return processes
         except Exception as e:
             print(f"⚠️  Error checking processes: {e}")
@@ -133,13 +136,19 @@ class MTGBotManager:
         # Step 4: Additional cleanup using pkill (more targeted)
         try:
             subprocess.run(
-                ["pkill", "-f", "python -m mtg_card_bot"], check=False, stderr=subprocess.DEVNULL
+                ["pkill", "-f", "python -m mtg_card_bot"],
+                check=False,
+                stderr=subprocess.DEVNULL,
             )
             subprocess.run(
-                ["pkill", "-f", "python3 -m mtg_card_bot"], check=False, stderr=subprocess.DEVNULL
+                ["pkill", "-f", "python3 -m mtg_card_bot"],
+                check=False,
+                stderr=subprocess.DEVNULL,
             )
             subprocess.run(
-                ["pkill", "-f", "uv run.*mtg-card-bot$"], check=False, stderr=subprocess.DEVNULL
+                ["pkill", "-f", "uv run.*mtg-card-bot$"],
+                check=False,
+                stderr=subprocess.DEVNULL,
             )
         except Exception:
             pass  # pkill might not be available
@@ -190,7 +199,8 @@ class MTGBotManager:
             print(f"   Process ID: {self.bot_process.pid}")
             print(f"   Command: {' '.join(cmd)}")
             print(
-                "\nPress Ctrl+C to stop the bot, or use 'python manage_bot.py stop' from another terminal"
+                "\nPress Ctrl+C to stop the bot, or use "
+                "'python manage_bot.py stop' from another terminal"
             )
             print("=" * 60)
 
@@ -198,10 +208,16 @@ class MTGBotManager:
             signal.signal(signal.SIGINT, self._signal_handler)
             signal.signal(signal.SIGTERM, self._signal_handler)
 
+            stdout = self.bot_process.stdout
+            if stdout is None:
+                print("❌ Failed to capture bot output stream")
+                self._cleanup()
+                return False
+
             # Stream output
             try:
                 while self.bot_process.poll() is None:
-                    output = self.bot_process.stdout.readline()
+                    output = stdout.readline()
                     if output:
                         print(f"[MTG BOT] {output.rstrip()}")
                     else:
@@ -322,7 +338,7 @@ class MTGBotManager:
         except KeyboardInterrupt:
             print("\n👋 Stopped monitoring logs")
 
-    def _signal_handler(self, signum: int, frame) -> None:
+    def _signal_handler(self, signum: int, frame: FrameType | None) -> None:
         """Handle shutdown signals."""
         print(f"\n🛑 Received signal {signum}, shutting down...")
         self._cleanup()
@@ -437,7 +453,7 @@ class MTGBotManager:
         return False
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     manager = MTGBotManager()
 

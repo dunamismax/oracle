@@ -7,7 +7,7 @@ Discord bot for lightning-fast Magic: The Gathering lookups with live prices, le
 ### Requirements
 
 - [uv](https://docs.astral.sh/uv/) package manager
-- Python 3.13 (installed and pinned through `uv python`)
+- Python 3.13 (installed and pinned through `.python-version` / `uv python`)
 - Discord bot token with message content intent enabled
 
 ### Installation
@@ -23,6 +23,9 @@ cp .env.example .env  # add your MTG_DISCORD_TOKEN
 uv sync
 
 uv run python manage_bot.py start   # start with live logs
+
+# optional: install local git hooks
+uv run pre-commit install
 ```
 
 ## Configuration
@@ -69,9 +72,12 @@ Environment variables can be set in `.env`:
 ## Development
 
 ```bash
-uv run ruff format .
+uv sync
 uv run ruff check .
-uv run mypy mtg_card_bot/
+uv run ruff format --check .
+uv run pyright
+uv run pytest
+uv run pre-commit run --all-files
 uv run python manage_bot.py logs
 ```
 

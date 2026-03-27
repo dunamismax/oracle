@@ -3,7 +3,9 @@
 import asyncio
 import signal
 import sys
+from contextlib import suppress
 from pathlib import Path
+from types import FrameType
 
 from . import config, logging
 from .bot import MTGCardBot
@@ -42,7 +44,7 @@ async def async_main() -> None:
     # Set up signal handlers for graceful shutdown
     shutdown_event = asyncio.Event()
 
-    def signal_handler(signum: int, frame) -> None:
+    def signal_handler(signum: int, frame: FrameType | None) -> None:
         logger.info("Received shutdown signal", signal=signum)
         shutdown_event.set()
 
@@ -62,10 +64,8 @@ async def async_main() -> None:
         # Cancel pending tasks
         for task in pending:
             task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         # Clean shutdown
         logger.info("Shutting down MTG Card bot...")

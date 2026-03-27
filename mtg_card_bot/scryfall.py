@@ -40,9 +40,7 @@ class Card:
         self.image_status = data.get("image_status", "")
         self.highres_image = data.get("highres_image", False)
 
-    def get_best_image_url(
-        self, prefer_formats: tuple[str, ...] | None = None
-    ) -> str:
+    def get_best_image_url(self, prefer_formats: tuple[str, ...] | None = None) -> str:
         """Get the highest quality image URL available for the card."""
         image_uris = self.image_uris
 
@@ -77,7 +75,7 @@ class Card:
 
     def is_valid_card(self) -> bool:
         """Check if the card has valid data for display."""
-        return self.object == "card" and (self.name or self.card_faces)
+        return self.object == "card" and bool(self.name or self.card_faces)
 
     def has_image(self) -> bool:
         """Check if the card has at least one image available."""
@@ -256,7 +254,7 @@ class ScryfallClient:
                     error = errors.create_error(
                         errors.ErrorType.API, f"HTTP error {response.status_code}"
                     )
-                    raise error
+                    raise error from None
 
             self.logger.debug(
                 "API request successful",
@@ -275,14 +273,13 @@ class ScryfallClient:
                 error=str(e),
                 status=str(e.status),
             )
-            raise error
+            raise error from e
         except httpx.RequestError as e:
-            response_time = (time.time() - start_time) * 1000
             error = errors.create_error(
                 errors.ErrorType.NETWORK, f"Request failed: {e}"
             )
             self.logger.error("API request failed", endpoint=endpoint, error=str(e))
-            raise error
+            raise error from e
 
     async def get_card_by_name(self, name: str) -> Card:
         """Search for a card by name using fuzzy matching."""
