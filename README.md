@@ -81,6 +81,12 @@ uv run pre-commit run --all-files
 uv run python manage_bot.py logs
 ```
 
+## Testing and CI
+
+- Local verification uses the same flow as CI: `uv sync`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`, and `uv run pytest`.
+- GitHub Actions runs that verification on every push to `main` and on pull requests.
+- The bot test suite uses mocks and fakes for Discord and Scryfall interactions so the checks stay fast and deterministic.
+
 ## Deployment Notes
 
 - **Systemd:** run `manage_bot.py start` from a service pointing at your project directory.

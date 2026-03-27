@@ -84,3 +84,18 @@ Python stack while keeping bot behavior unchanged.
 - [x] Update `.env.example` and `README.md` to match the new development workflow
 - [x] Keep future persistence guidance conservative: no database dependency until the bot has a
       concrete stateful feature that needs one
+
+## Phase 5: Tests and CI Hardening
+
+Verified checkpoint completed on 2026-03-27. This phase tightens bot-facing confidence without
+changing runtime behavior.
+
+- [x] Add focused bot tests covering command parsing routes for bracket syntax, aliases, filtered
+      random lookup, and multi-card dispatch
+- [x] Add tests around filtered query fallback behavior so sort hints and Scryfall filters route
+      through the right lookup path
+- [x] Add embed/message tests for text-only cards, image-rich cards, and multi-card grid output
+      using mocks instead of live Discord or live Scryfall calls
+- [x] Add GitHub Actions CI enforcing `uv sync`, `uv run ruff check .`,
+      `uv run ruff format --check .`, `uv run pyright`, and `uv run pytest`
+- [x] Update `README.md` so local verification and CI expectations stay aligned
