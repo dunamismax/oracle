@@ -210,10 +210,13 @@ class ScryfallClient:
     BASE_URL = "https://api.scryfall.com"
     USER_AGENT = "MTGCardBot/2.0"
     RATE_LIMIT = 0.1  # 100ms between requests (10 requests per second max)
+    MAX_RETRIES = 3
+    RETRY_BACKOFF = 1.0  # Base delay in seconds; doubles each retry
 
     def __init__(self) -> None:
         self.client = httpx.AsyncClient(
             timeout=30.0,
+            follow_redirects=True,
             headers={
                 "User-Agent": self.USER_AGENT,
                 "Accept": "application/json",
@@ -227,59 +230,112 @@ class ScryfallClient:
         """Close the HTTP client."""
         await self.client.aclose()
 
+    def _is_retryable(self, status_code: int) -> bool:
+        """Check if an HTTP status code indicates a retryable error."""
+        return status_code in (429, 500, 502, 503, 504)
+
     async def _request(self, endpoint: str) -> httpx.Response:
-        """Make a rate-limited request to the Scryfall API."""
-        start_time = time.time()
-
-        # Rate limiting
-        async with self._rate_lock:
-            time_since_last = start_time - self._last_request_time
-            if time_since_last < self.RATE_LIMIT:
-                await asyncio.sleep(self.RATE_LIMIT - time_since_last)
-            self._last_request_time = time.time()
-
+        """Make a rate-limited request to the Scryfall API with retries."""
         url = f"{self.BASE_URL}{endpoint}"
-        self.logger.debug("Making API request", endpoint=endpoint)
+        last_exception: Exception | None = None
 
-        try:
-            response = await self.client.get(url)
-            response_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        for attempt in range(self.MAX_RETRIES):
+            start_time = time.time()
 
-            if response.status_code >= 400:
-                try:
-                    error_data = response.json()
-                    raise ScryfallError(error_data)
-                except ValueError:
-                    # Invalid JSON in error response
-                    error = errors.create_error(
-                        errors.ErrorType.API, f"HTTP error {response.status_code}"
-                    )
-                    raise error from None
+            # Rate limiting
+            async with self._rate_lock:
+                time_since_last = start_time - self._last_request_time
+                if time_since_last < self.RATE_LIMIT:
+                    await asyncio.sleep(self.RATE_LIMIT - time_since_last)
+                self._last_request_time = time.time()
 
-            self.logger.debug(
-                "API request successful",
-                endpoint=endpoint,
-                response_time_ms=response_time,
-            )
-            return response
+            if attempt > 0:
+                self.logger.debug(
+                    "Retrying API request",
+                    endpoint=endpoint,
+                    attempt=attempt + 1,
+                )
 
-        except ScryfallError as e:
-            error = errors.create_error(
-                e.get_error_type(), e.details or "Scryfall API error", e
+            try:
+                response = await self.client.get(url)
+                response_time = (time.time() - start_time) * 1000
+
+                if response.status_code >= 400:
+                    # Retry on transient server errors
+                    if self._is_retryable(response.status_code):
+                        delay = self.RETRY_BACKOFF * (2**attempt)
+                        self.logger.warning(
+                            "Retryable API error",
+                            endpoint=endpoint,
+                            status=response.status_code,
+                            retry_in=f"{delay:.1f}s",
+                            attempt=attempt + 1,
+                        )
+                        last_exception = errors.create_error(
+                            errors.ErrorType.API,
+                            "Scryfall API temporarily unavailable. "
+                            "Please try again later.",
+                        )
+                        if attempt < self.MAX_RETRIES - 1:
+                            await asyncio.sleep(delay)
+                            continue
+                        # All retries exhausted for this retryable error
+                        raise last_exception
+
+                    try:
+                        error_data = response.json()
+                        raise ScryfallError(error_data)
+                    except ValueError:
+                        error = errors.create_error(
+                            errors.ErrorType.API,
+                            f"HTTP error {response.status_code}",
+                        )
+                        raise error from None
+
+                self.logger.debug(
+                    "API request successful",
+                    endpoint=endpoint,
+                    response_time_ms=response_time,
+                )
+                return response
+
+            except ScryfallError as e:
+                error = errors.create_error(
+                    e.get_error_type(), e.details or "Scryfall API error", e
+                )
+                self.logger.warning(
+                    "API request failed",
+                    endpoint=endpoint,
+                    error=str(e),
+                    status=str(e.status),
+                )
+                raise error from e
+            except httpx.RequestError as e:
+                delay = self.RETRY_BACKOFF * (2**attempt)
+                self.logger.warning(
+                    "Network error, retrying",
+                    endpoint=endpoint,
+                    error=str(e),
+                    retry_in=f"{delay:.1f}s",
+                    attempt=attempt + 1,
+                )
+                last_exception = e
+                if attempt < self.MAX_RETRIES - 1:
+                    await asyncio.sleep(delay)
+                    continue
+                error = errors.create_error(
+                    errors.ErrorType.NETWORK, f"Request failed after retries: {e}"
+                )
+                raise error from e
+
+        # All retries exhausted (only reached for retryable HTTP errors)
+        if last_exception is not None:
+            raise errors.create_error(
+                errors.ErrorType.API,
+                "Scryfall API temporarily unavailable. Please try again later.",
+                last_exception if isinstance(last_exception, Exception) else None,
             )
-            self.logger.warning(
-                "API request failed",
-                endpoint=endpoint,
-                error=str(e),
-                status=str(e.status),
-            )
-            raise error from e
-        except httpx.RequestError as e:
-            error = errors.create_error(
-                errors.ErrorType.NETWORK, f"Request failed: {e}"
-            )
-            self.logger.error("API request failed", endpoint=endpoint, error=str(e))
-            raise error from e
+        raise errors.create_error(errors.ErrorType.API, "Request failed")
 
     async def get_card_by_name(self, name: str) -> Card:
         """Search for a card by name using fuzzy matching."""

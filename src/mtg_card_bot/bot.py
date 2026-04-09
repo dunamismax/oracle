@@ -57,11 +57,7 @@ class MTGCardBot(discord.Client):
 
     async def start(self, token: str | None = None, *, reconnect: bool = True) -> None:
         """Start the Discord client with the configured token by default."""
-        resolved_token = (
-            token
-            or getattr(self.config, "token", None)
-            or getattr(self.config, "discord_token", "")
-        )
+        resolved_token = token or self.config.discord_token
         await super().start(resolved_token, reconnect=reconnect)
 
     async def setup_hook(self) -> None:
@@ -255,24 +251,9 @@ class MTGCardBot(discord.Client):
                 filter_query=filter_query,
                 error=str(e),
             )
-
-            # Provide helpful error messages
-            if isinstance(e, errors.MTGError):
-                if e.error_type == errors.ErrorType.NOT_FOUND and filter_query:
-                    error_msg = (
-                        f"No cards found matching filters: '{filter_query}'. "
-                        "Try broader criteria."
-                    )
-                elif e.error_type == errors.ErrorType.RATE_LIMIT:
-                    error_msg = "API rate limit exceeded. Please try again in a moment."
-                else:
-                    error_msg = (
-                        "Sorry, something went wrong while fetching a random card."
-                    )
-            else:
-                error_msg = "Sorry, something went wrong while fetching a random card."
-
-            await self._send_error_message(message.channel, error_msg)
+            await self._send_error_message(
+                message.channel, self._user_error_message(e, filter_query, "random")
+            )
 
     async def _handle_card_lookup(
         self, message: discord.Message, card_query: str
@@ -303,31 +284,9 @@ class MTGCardBot(discord.Client):
                 card_query=card_query,
                 error=str(e),
             )
-
-            # Provide helpful error messages based on error type
-            if isinstance(e, errors.MTGError):
-                if e.error_type == errors.ErrorType.NOT_FOUND:
-                    if self._has_filter_parameters(card_query):
-                        error_msg = (
-                            f"No cards found for '{card_query}'. Try simpler "
-                            "filters like `e:set` or `is:foil`, or check the "
-                            "spelling."
-                        )
-                    else:
-                        error_msg = (
-                            f"Card '{card_query}' not found. Try partial names "
-                            "like 'bolt' for 'Lightning Bolt'."
-                        )
-                elif e.error_type == errors.ErrorType.RATE_LIMIT:
-                    error_msg = "API rate limit exceeded. Please try again in a moment."
-                else:
-                    error_msg = (
-                        "Sorry, something went wrong while searching for that card."
-                    )
-            else:
-                error_msg = "Sorry, something went wrong while searching for that card."
-
-            await self._send_error_message(message.channel, error_msg)
+            await self._send_error_message(
+                message.channel, self._user_error_message(e, card_query)
+            )
 
     async def _handle_rules_lookup(
         self, message: discord.Message, card_query: str
@@ -408,21 +367,9 @@ class MTGCardBot(discord.Client):
                 card_query=card_query,
                 error=str(e),
             )
-
-            if isinstance(e, errors.MTGError):
-                if e.error_type == errors.ErrorType.NOT_FOUND:
-                    error_msg = f"Card '{card_query}' not found for rules lookup."
-                else:
-                    error_msg = (
-                        "Sorry, something went wrong while looking up rules for "
-                        "that card."
-                    )
-            else:
-                error_msg = (
-                    "Sorry, something went wrong while looking up rules for that card."
-                )
-
-            await self._send_error_message(message.channel, error_msg)
+            await self._send_error_message(
+                message.channel, self._user_error_message(e, card_query)
+            )
 
     async def _resolve_card_query(self, card_query: str) -> tuple[Card, bool]:
         """Resolve a single card query into a card with caching and fallbacks."""
@@ -485,14 +432,17 @@ class MTGCardBot(discord.Client):
             query_count=len(queries),
         )
 
-        # Resolve cards sequentially
-        resolved_cards: list[MultiResolvedCard] = []
-        for query in queries:
+        # Resolve cards concurrently
+        async def _resolve_one(query: str) -> MultiResolvedCard:
             try:
                 card, used_fallback = await self._resolve_card_query(query)
-                resolved_cards.append(MultiResolvedCard(query, card, used_fallback))
+                return MultiResolvedCard(query, card, used_fallback)
             except Exception as e:
-                resolved_cards.append(MultiResolvedCard(query, error=e))
+                return MultiResolvedCard(query, error=e)
+
+        resolved_cards = list(
+            await asyncio.gather(*[_resolve_one(q) for q in queries])
+        )
 
         # Check if any cards were successfully resolved
         success_count = sum(
@@ -600,17 +550,28 @@ class MTGCardBot(discord.Client):
         """Check if the query contains Scryfall filter syntax."""
         essential_filters = [
             "e:",
+            "s:",
             "set:",
             "frame:",
             "border:",
-            "is:foil",
-            "is:nonfoil",
-            "is:fullart",
-            "is:textless",
-            "is:borderless",
+            "is:",
             "rarity:",
+            "r:",
             "cn:",
             "number:",
+            "c:",
+            "color:",
+            "id:",
+            "t:",
+            "type:",
+            "o:",
+            "oracle:",
+            "pow:",
+            "tou:",
+            "cmc:",
+            "mv:",
+            "f:",
+            "format:",
         ]
 
         lower_query = query.lower()
@@ -670,8 +631,6 @@ class MTGCardBot(discord.Client):
 
     def _extract_bracket_content(self, message_content: str) -> str | None:
         """Extract card name from bracket syntax [[card name]]."""
-        import re
-
         # Look for [[content]] pattern
         bracket_pattern = r"\[\[([^\]]+)\]\]"
         match = re.search(bracket_pattern, message_content)
@@ -779,6 +738,45 @@ class MTGCardBot(discord.Client):
 
         await channel.send(embed=embed)
 
+    def _user_error_message(
+        self, exc: Exception, query: str, context: str = "lookup"
+    ) -> str:
+        """Return a user-friendly error message based on exception type."""
+        if isinstance(exc, errors.MTGError):
+            if exc.error_type == errors.ErrorType.NOT_FOUND:
+                if context == "random" and query:
+                    return (
+                        f"No cards found matching filters: '{query}'. "
+                        "Try broader criteria."
+                    )
+                if context == "random":
+                    return (
+                        "Scryfall API couldn't return a random card right now. "
+                        "Please try again in a moment."
+                    )
+                if self._has_filter_parameters(query):
+                    return (
+                        f"No cards found for '{query}'. Try simpler "
+                        "filters like `e:set` or `is:foil`, or check the spelling."
+                    )
+                return (
+                    f"Card '{query}' not found. Try partial names "
+                    "like 'bolt' for 'Lightning Bolt'."
+                )
+            if exc.error_type == errors.ErrorType.RATE_LIMIT:
+                return "API rate limit exceeded. Please try again in a moment."
+            if exc.error_type == errors.ErrorType.NETWORK:
+                return (
+                    "Could not reach the Scryfall API. "
+                    "Please try again in a moment."
+                )
+            if exc.error_type == errors.ErrorType.API:
+                return (
+                    "The Scryfall API is temporarily unavailable. "
+                    "Please try again in a moment."
+                )
+        return "Sorry, something went wrong. Please try again."
+
     def _get_rarity_color(self, rarity: str) -> int:
         """Return a color based on card rarity."""
         rarity_colors = {
@@ -868,22 +866,6 @@ class MTGCardBot(discord.Client):
             await channel.send(embed=embed)
         except Exception as e:
             self.logger.error("Failed to send error message", error=str(e))
-
-    def _format_duration(self, seconds: float) -> str:
-        """Format a duration in seconds into a human-readable string."""
-        seconds = int(seconds)
-        days = seconds // 86400
-        hours = (seconds % 86400) // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-
-        if days > 0:
-            return f"{days}d {hours}h {minutes}m {secs}s"
-        if hours > 0:
-            return f"{hours}h {minutes}m {secs}s"
-        if minutes > 0:
-            return f"{minutes}m {secs}s"
-        return f"{secs}s"
 
     async def _cleanup_duplicates_periodically(self) -> None:
         """Background task to clean up old duplicate suppression data."""
