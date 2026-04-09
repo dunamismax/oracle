@@ -228,10 +228,7 @@ class MTGBotManager:
                     if return_code == 0:
                         print(f"\n✅ {self.bot_name} exited normally")
                     else:
-                        print(
-                            f"\n❌ {self.bot_name} exited "
-                            f"with code {return_code}"
-                        )
+                        print(f"\n❌ {self.bot_name} exited with code {return_code}")
                     return return_code == 0
 
                 except KeyboardInterrupt:

@@ -71,8 +71,7 @@ class MTGCardBot(discord.Client):
     async def on_ready(self) -> None:
         """Called when the bot is ready."""
         guild_info = [
-            f"{g.name} (id={g.id}, members={g.member_count})"
-            for g in self.guilds
+            f"{g.name} (id={g.id}, members={g.member_count})" for g in self.guilds
         ]
         self.logger.info(
             "Bot is ready",
@@ -440,9 +439,7 @@ class MTGCardBot(discord.Client):
             except Exception as e:
                 return MultiResolvedCard(query, error=e)
 
-        resolved_cards = list(
-            await asyncio.gather(*[_resolve_one(q) for q in queries])
-        )
+        resolved_cards = list(await asyncio.gather(*[_resolve_one(q) for q in queries]))
 
         # Check if any cards were successfully resolved
         success_count = sum(
@@ -766,10 +763,7 @@ class MTGCardBot(discord.Client):
             if exc.error_type == errors.ErrorType.RATE_LIMIT:
                 return "API rate limit exceeded. Please try again in a moment."
             if exc.error_type == errors.ErrorType.NETWORK:
-                return (
-                    "Could not reach the Scryfall API. "
-                    "Please try again in a moment."
-                )
+                return "Could not reach the Scryfall API. Please try again in a moment."
             if exc.error_type == errors.ErrorType.API:
                 return (
                     "The Scryfall API is temporarily unavailable. "
