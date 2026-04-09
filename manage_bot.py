@@ -23,6 +23,7 @@ class MTGBotManager:
         self.module_name = "mtg_card_bot"
         self.env_var = "MTG_DISCORD_TOKEN"
         self.cleanup_called = False
+        self.log_file = Path("bot.log")
 
     def clear_screen(self) -> None:
         """Clear the terminal screen."""
@@ -187,54 +188,56 @@ class MTGBotManager:
             # Use uv to run the bot
             cmd = ["uv", "run", "python", "-m", self.module_name]
 
-            self.bot_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1,
-            )
+            # Write bot output to a log file so it can be tailed
+            # from any session (e.g. SSH)
+            with open(self.log_file, "a", buffering=1) as log_fh:
+                self.bot_process = subprocess.Popen(
+                    cmd,
+                    stdout=log_fh,
+                    stderr=subprocess.STDOUT,
+                )
 
-            print(f"✅ {self.bot_name} started successfully!")
-            print(f"   Process ID: {self.bot_process.pid}")
-            print(f"   Command: {' '.join(cmd)}")
-            print(
-                "\nPress Ctrl+C to stop the bot, or use "
-                "'python manage_bot.py stop' from another terminal"
-            )
-            print("=" * 60)
+                print(f"✅ {self.bot_name} started successfully!")
+                print(f"   Process ID: {self.bot_process.pid}")
+                print(f"   Command: {' '.join(cmd)}")
+                print(f"   Log file: {self.log_file.resolve()}")
+                print(
+                    "\nPress Ctrl+C to stop the bot, or use "
+                    "'python manage_bot.py stop' from another terminal"
+                )
+                print("=" * 60)
 
-            # Set up signal handlers
-            signal.signal(signal.SIGINT, self._signal_handler)
-            signal.signal(signal.SIGTERM, self._signal_handler)
+                # Set up signal handlers
+                signal.signal(signal.SIGINT, self._signal_handler)
+                signal.signal(signal.SIGTERM, self._signal_handler)
 
-            stdout = self.bot_process.stdout
-            if stdout is None:
-                print("❌ Failed to capture bot output stream")
-                self._cleanup()
-                return False
+                # Tail the log file to show output inline
+                tail = subprocess.Popen(
+                    ["tail", "-f", str(self.log_file)],
+                    stdout=None,
+                    stderr=None,
+                )
 
-            # Stream output
-            try:
-                while self.bot_process.poll() is None:
-                    output = stdout.readline()
-                    if output:
-                        print(f"[MTG BOT] {output.rstrip()}")
+                try:
+                    # Wait for the bot to exit
+                    self.bot_process.wait()
+                    tail.terminate()
+
+                    return_code = self.bot_process.returncode
+                    if return_code == 0:
+                        print(f"\n✅ {self.bot_name} exited normally")
                     else:
-                        time.sleep(0.1)
+                        print(
+                            f"\n❌ {self.bot_name} exited "
+                            f"with code {return_code}"
+                        )
+                    return return_code == 0
 
-                # Process has ended
-                return_code = self.bot_process.wait()
-                if return_code == 0:
-                    print(f"\n✅ {self.bot_name} exited normally")
-                else:
-                    print(f"\n❌ {self.bot_name} exited with code {return_code}")
-                return return_code == 0
-
-            except KeyboardInterrupt:
-                print(f"\n🛑 Stopping {self.bot_name}...")
-                self._cleanup()
-                return True
+                except KeyboardInterrupt:
+                    print(f"\n🛑 Stopping {self.bot_name}...")
+                    tail.terminate()
+                    self._cleanup()
+                    return True
 
         except FileNotFoundError:
             print("❌ 'uv' command not found. Please install uv first.")
@@ -306,35 +309,30 @@ class MTGBotManager:
             print("UV Package Manager: ❌ Not installed")
 
     def logs(self) -> None:
-        """Show recent logs from running MTG bot processes."""
-        processes = self.check_running_processes()
-
-        if not processes:
-            print("❌ No running MTG bot processes found")
+        """Show recent and live logs from the bot log file."""
+        if not self.log_file.exists():
+            print(f"❌ Log file not found: {self.log_file}")
+            print("   Start the bot with 'start' to create it.")
             return
 
-        print(f"📋 Monitoring logs from {len(processes)} process(es)...")
+        processes = self.check_running_processes()
+        if processes:
+            print(f"📋 Bot is running ({len(processes)} process(es))")
+            for proc in processes:
+                print(f"   PID {proc['pid']}: {proc['command'][:60]}")
+        else:
+            print("⚠️  Bot is not running — showing historical logs")
+
+        print(f"📄 Log file: {self.log_file.resolve()}")
         print("Press Ctrl+C to stop monitoring")
         print("=" * 60)
 
         try:
-            for proc in processes:
-                pid = proc["pid"]
-                print(f"[PID {pid}] Process: {proc['command'][:50]}...")
-
-            print("\n⚠️  Note: This shows live output only. For historical logs,")
-            print("check your bot's configured log files or system logs.")
-            print("=" * 60)
-
-            # Keep the process running to show it's monitoring
-            while True:
-                time.sleep(1)
-                # Check if processes are still running
-                current_processes = self.check_running_processes()
-                if not current_processes:
-                    print("\n📋 All bot processes have stopped.")
-                    break
-
+            # Use tail -f to follow the log file in real time
+            subprocess.run(
+                ["tail", "-n", "100", "-f", str(self.log_file)],
+                check=False,
+            )
         except KeyboardInterrupt:
             print("\n👋 Stopped monitoring logs")
 
