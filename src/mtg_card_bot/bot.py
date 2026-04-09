@@ -8,6 +8,7 @@ from contextlib import suppress
 import discord
 
 from . import config, errors, logging
+from .grid import compose_card_grid
 from .scryfall import Card, ScryfallClient
 
 
@@ -444,62 +445,87 @@ class MTGCardBot(discord.Client):
 
         resolved_cards = list(await asyncio.gather(*[_resolve_one(q) for q in queries]))
 
-        # Check if any cards were successfully resolved
-        success_count = sum(
-            1
-            for r in resolved_cards
-            if r.error is None and r.card and r.card.is_valid_card()
-        )
+        # Separate successes from failures
+        valid_cards: list[tuple[MultiResolvedCard, Card]] = []
+        failed_queries: list[str] = []
 
-        if success_count == 0:
+        for item in resolved_cards:
+            if item.error or not item.card or not item.card.is_valid_card():
+                failed_queries.append(item.query)
+            else:
+                valid_cards.append((item, item.card))
+
+        if not valid_cards:
             await self._send_error_message(
                 message.channel, "Failed to resolve any requested cards."
             )
             return
 
-        # Build one embed per card (Discord allows up to 10 embeds per message)
-        embeds: list[discord.Embed] = []
-        errors: list[str] = []
-
-        for item in resolved_cards:
-            if item.error or not item.card or not item.card.is_valid_card():
-                errors.append(item.query)
-                continue
-
-            card = item.card
-            embed = discord.Embed(
-                title=card.get_display_name(),
-                url=card.scryfall_uri,
-                color=self._get_rarity_color(card.rarity),
+        # If only one card resolved, use the standard single-card display
+        if len(valid_cards) == 1:
+            item, card = valid_cards[0]
+            await self._send_card_message(
+                message.channel, card, item.used_fallback, item.query
             )
+            if failed_queries:
+                await self._send_error_message(
+                    message.channel,
+                    "Not found: " + ", ".join(failed_queries),
+                )
+            return
 
+        # Build the composite grid image
+        cards_for_grid = [card for _, card in valid_cards]
+        try:
+            grid_buffer = await compose_card_grid(
+                cards_for_grid, self.scryfall_client.client
+            )
+        except Exception as e:
+            self.logger.error("Grid composition failed", error=str(e))
+            await self._send_error_message(
+                message.channel,
+                "Failed to compose card grid. Please try again.",
+            )
+            return
+
+        # Build numbered description with links, set, and price
+        description_lines: list[str] = []
+        for i, (item, card) in enumerate(valid_cards, 1):
+            parts = [f"**{i}.**"]
+
+            # Card name as Scryfall link
+            name = card.get_display_name()
             if item.used_fallback:
-                embed.description = f"*Closest match for '{item.query}'*"
+                name += " *(closest match)*"
+            if card.scryfall_uri:
+                parts.append(f"[{name}]({card.scryfall_uri})")
+            else:
+                parts.append(name)
 
-            image_url = card.get_best_image_url(("large", "normal", "small"))
-            if image_url:
-                embed.set_image(url=image_url)
+            # Set code and rarity
+            parts.append(f"· {card.set_code.upper()}")
+            parts.append(f"· {card.rarity.title()}")
 
-            # Compact footer with set and price
-            footer_parts = [f"{card.set_name} ({card.set_code.upper()})"]
+            # Price
             price = card.get_price_display()
             if price:
-                footer_parts.append(price)
-            embed.set_footer(text=" · ".join(footer_parts))
+                parts.append(f"· {price}")
 
-            embeds.append(embed)
+            description_lines.append(" ".join(parts))
 
-        # Report any failures
-        if errors:
-            error_embed = discord.Embed(
-                description="\n".join(f"- {q}: not found" for q in errors),
-                color=0xE74C3C,
-            )
-            embeds.append(error_embed)
+        # Add failed queries
+        if failed_queries:
+            description_lines.append("")
+            description_lines.append("*Not found: " + ", ".join(failed_queries) + "*")
 
-        # Send in chunks of 10 (Discord embed limit per message)
-        for i in range(0, len(embeds), 10):
-            await message.channel.send(embeds=embeds[i : i + 10])
+        embed = discord.Embed(
+            description="\n".join(description_lines),
+            color=0x5865F2,
+        )
+        embed.set_image(url="attachment://cards.png")
+
+        file = discord.File(grid_buffer, filename="cards.png")
+        await message.channel.send(embed=embed, file=file)
 
     def _has_filter_parameters(self, query: str) -> bool:
         """Check if the query contains Scryfall filter syntax."""

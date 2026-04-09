@@ -21,9 +21,12 @@ class FakeChannel:
         *,
         embed: discord.Embed | None = None,
         embeds: list[discord.Embed] | None = None,
+        file: discord.File | None = None,
         files: list[discord.File] | None = None,
     ) -> None:
-        self.sent_messages.append({"embed": embed, "embeds": embeds, "files": files})
+        self.sent_messages.append(
+            {"embed": embed, "embeds": embeds, "file": file, "files": files}
+        )
 
 
 class FakeAuthor:
@@ -199,14 +202,13 @@ async def test_send_card_message_with_image_includes_filter_context(
     assert embed.footer.text == "Limited Edition Alpha • Rare • Art by Christopher Rush"
 
 
-async def test_multi_card_sends_one_embed_per_card(
+async def test_multi_card_sends_grid_embed_with_file(
     bot: MTGCardBot, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     bolt = make_card()
     counterspell = make_card(
         name="Counterspell",
         scryfall_uri="https://scryfall.com/card/7ed/counterspell-id",
-        image_uris={},
         rarity="uncommon",
         set_name="Seventh Edition",
         set="7ed",
@@ -222,27 +224,44 @@ async def test_multi_card_sends_one_embed_per_card(
 
     monkeypatch.setattr(bot, "_resolve_card_query", fake_resolve)
 
+    # Mock the grid compositor to avoid real image downloads
+    import io
+
+    from mtg_card_bot import grid
+
+    fake_buffer = io.BytesIO(b"fake-png-data")
+
+    async def fake_compose(*args: Any, **kwargs: Any) -> io.BytesIO:
+        return fake_buffer
+
+    monkeypatch.setattr(grid, "compose_card_grid", fake_compose)
+
     channel = FakeChannel()
-    message = FakeMessage(
-        "!bolt; counterspell; nope", message_id=200, channel=channel
-    )
+    message = FakeMessage("!bolt; counterspell; nope", message_id=200, channel=channel)
 
     await bot.on_message(cast(Any, message))
 
-    # Should send one message with all embeds (not separate list + images)
+    # Should send one message with embed + file
     assert len(channel.sent_messages) == 1
-    embeds = channel.sent_messages[0]["embeds"]
-    assert embeds is not None
-    assert len(embeds) == 3  # 2 cards + 1 error
+    msg = channel.sent_messages[0]
 
-    # First embed: Lightning Bolt with image
-    assert embeds[0].title == "Lightning Bolt"
-    assert embeds[0].image.url == "https://img.example/lightning-bolt-large.jpg"
+    # Has a file attachment
+    assert msg["file"] is not None
+    assert msg["file"].filename == "cards.png"
 
-    # Second embed: Counterspell (fallback), no image
-    assert embeds[1].title == "Counterspell"
-    assert "Closest match" in (embeds[1].description or "")
-    assert embeds[1].footer.text == "Seventh Edition (7ED) · $2.50"
+    # Embed has numbered card list with links and prices
+    embed = msg["embed"]
+    assert isinstance(embed, discord.Embed)
+    desc = embed.description or ""
+    assert "Lightning Bolt" in desc
+    assert "Counterspell" in desc
+    assert "closest match" in desc.lower()
+    assert "$2.50" in desc
+    assert "LEA" in desc
+    assert "7ED" in desc
 
-    # Third embed: error for unknown card
-    assert "nope" in (embeds[2].description or "")
+    # Failed lookups mentioned
+    assert "nope" in desc.lower()
+
+    # Grid image attached
+    assert embed.image.url == "attachment://cards.png"
