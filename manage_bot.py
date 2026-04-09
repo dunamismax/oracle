@@ -9,8 +9,8 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
-from types import FrameType
 
 
 class MTGBotManager:
@@ -18,6 +18,7 @@ class MTGBotManager:
 
     def __init__(self):
         self.bot_process: subprocess.Popen | None = None
+        self.tail_process: subprocess.Popen | None = None
         self.bot_name = "MTG Card Bot"
         self.package_name = "mtg-card-bot"
         self.module_name = "mtg_card_bot"
@@ -183,9 +184,11 @@ class MTGBotManager:
             return False
 
         print(f"🚀 Starting {self.bot_name}...")
+        self.cleanup_called = False
 
         try:
-            # Use uv to run the bot
+            # Use uv to run the bot in its own process group so we can
+            # kill uv AND the child Python process together.
             cmd = ["uv", "run", "python", "-m", self.module_name]
 
             # Write bot output to a log file so it can be tailed
@@ -195,6 +198,7 @@ class MTGBotManager:
                     cmd,
                     stdout=log_fh,
                     stderr=subprocess.STDOUT,
+                    start_new_session=True,
                 )
 
                 print(f"✅ {self.bot_name} started successfully!")
@@ -207,21 +211,18 @@ class MTGBotManager:
                 )
                 print("=" * 60)
 
-                # Set up signal handlers
-                signal.signal(signal.SIGINT, self._signal_handler)
-                signal.signal(signal.SIGTERM, self._signal_handler)
-
                 # Tail the log file to show output inline
-                tail = subprocess.Popen(
+                self.tail_process = subprocess.Popen(
                     ["tail", "-f", str(self.log_file)],
                     stdout=None,
                     stderr=None,
                 )
 
                 try:
-                    # Wait for the bot to exit
+                    # Wait for the bot to exit (Ctrl+C raises
+                    # KeyboardInterrupt because we keep the default
+                    # SIGINT handler)
                     self.bot_process.wait()
-                    tail.terminate()
 
                     return_code = self.bot_process.returncode
                     if return_code == 0:
@@ -235,9 +236,10 @@ class MTGBotManager:
 
                 except KeyboardInterrupt:
                     print(f"\n🛑 Stopping {self.bot_name}...")
-                    tail.terminate()
                     self._cleanup()
                     return True
+                finally:
+                    self._kill_tail()
 
         except FileNotFoundError:
             print("❌ 'uv' command not found. Please install uv first.")
@@ -336,24 +338,37 @@ class MTGBotManager:
         except KeyboardInterrupt:
             print("\n👋 Stopped monitoring logs")
 
-    def _signal_handler(self, signum: int, frame: FrameType | None) -> None:
-        """Handle shutdown signals."""
-        print(f"\n🛑 Received signal {signum}, shutting down...")
-        self._cleanup()
+    def _kill_tail(self) -> None:
+        """Kill the tail process if running."""
+        if self.tail_process and self.tail_process.poll() is None:
+            self.tail_process.terminate()
+            try:
+                self.tail_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.tail_process.kill()
+                self.tail_process.wait()
+            self.tail_process = None
 
     def _cleanup(self) -> None:
-        """Clean up the bot process."""
+        """Clean up the bot process and its entire process group."""
         if self.cleanup_called:
             return
 
         self.cleanup_called = True
 
         if self.bot_process and self.bot_process.poll() is None:
-            print("🛑 Terminating bot process...")
+            pgid = None
+            with suppress(OSError):
+                pgid = os.getpgid(self.bot_process.pid)
 
             try:
-                # Try graceful shutdown first
-                self.bot_process.terminate()
+                # Send SIGTERM to the entire process group (uv + python child)
+                if pgid:
+                    print("🛑 Terminating bot process group...")
+                    os.killpg(pgid, signal.SIGTERM)
+                else:
+                    print("🛑 Terminating bot process...")
+                    self.bot_process.terminate()
 
                 # Wait up to 5 seconds for graceful shutdown
                 try:
@@ -361,12 +376,19 @@ class MTGBotManager:
                     print("✅ Bot stopped gracefully")
                 except subprocess.TimeoutExpired:
                     print("💀 Force killing bot process...")
-                    self.bot_process.kill()
-                    self.bot_process.wait()
+                    if pgid:
+                        os.killpg(pgid, signal.SIGKILL)
+                    else:
+                        self.bot_process.kill()
+                    self.bot_process.wait(timeout=3)
                     print("✅ Bot force terminated")
 
+            except ProcessLookupError:
+                print("✅ Bot process already exited")
             except Exception as e:
                 print(f"⚠️  Error during cleanup: {e}")
+
+        self._kill_tail()
 
     def show_menu(self) -> None:
         """Show the interactive menu."""
