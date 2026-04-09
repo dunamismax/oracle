@@ -502,11 +502,7 @@ class MTGCardBot(discord.Client):
             else:
                 parts.append(name)
 
-            # Set code and rarity
-            parts.append(f"· {card.set_code.upper()}")
-            parts.append(f"· {card.rarity.title()}")
-
-            # Price
+            # Price only
             price = card.get_price_display()
             if price:
                 parts.append(f"· {price}")

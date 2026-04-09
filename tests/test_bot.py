@@ -257,8 +257,6 @@ async def test_multi_card_sends_grid_embed_with_file(
     assert "Counterspell" in desc
     assert "closest match" in desc.lower()
     assert "$2.50" in desc
-    assert "LEA" in desc
-    assert "7ED" in desc
 
     # Failed lookups mentioned
     assert "nope" in desc.lower()
